@@ -244,7 +244,7 @@ def update_address(sql_result, database):
                     # if replace_city in is_mykolaiv:
                     #     replace_city = 'Львівська обл., ' + replace_city
                     if replace_city not in main_city_list():
-                        region = find_lat_long(replace_city)
+                        region = find_lat_long(splited_address[0] + ' ' + splited_address[1])
                         region_and_city = region + "., " + replace_city + " м., "
 
                     elif replace_city in main_city_list():
@@ -281,7 +281,7 @@ def update_address(sql_result, database):
                     replace_city = splited_address[0].replace("с.", "")
 
                     if replace_city not in main_city_list():
-                        region = find_lat_long(replace_city)
+                        region = find_lat_long(splited_address[0] + ' ' + splited_address[1])
                         region_and_city = region + "., " + replace_city + " с., "
 
                     elif replace_city in main_city_list():
@@ -320,7 +320,7 @@ def update_address(sql_result, database):
                     replace_city = splited_address[0].replace("смт.", "")
 
                     if replace_city not in main_city_list():
-                        region = find_lat_long(replace_city)
+                        region = find_lat_long(splited_address[0] + ' ' + splited_address[1])
                         region_and_city = region + "., " + replace_city + " смт., "
 
                     elif replace_city in main_city_list():
