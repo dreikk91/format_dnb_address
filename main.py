@@ -29,7 +29,11 @@ except FileNotFoundError:
     geolocator = "Nominatim"
     api_key = "BpKmlnBpKmlnhdUiJSPAI16qAVqo2Ks2MHV0pKQ"
     database_location = "D:\Venbest\DanubePro\Data\dpc2.fdb"
-    to_yaml = { "api_key": api_key, "geolocator": "Nominatim", "database_location": database_location }
+    to_yaml = {
+        "api_key": api_key,
+        "geolocator": "Nominatim",
+        "database_location": database_location,
+    }
 
     with open("format_address.yaml", "w") as f:
         yaml.dump(to_yaml, f, default_flow_style=False)
@@ -46,6 +50,7 @@ else:
 
 logger.info("Current geolocator is " + str(yaml_config["geolocator"]))
 
+
 def main_city_list():
     main_city_list = [
         "Івано-Франківськ",
@@ -61,11 +66,10 @@ def main_city_list():
 
 
 def add_and_replace_data_for_geocoding(address):
-    cutted_address = (
-            "Україна "
-            + address.replace("Миколаїв", "Львівська обл. Миколаїв")
-            .replace("Острів", "Тернопільська обл., Острів с.,")
-            .replace("Зіньків", "Хмельницька обл., Зіньків с.,")
+    cutted_address = "Україна " + address.replace(
+        "Миколаїв", "Львівська обл. Миколаїв"
+    ).replace("Острів", "Тернопільська обл., Острів с.,").replace(
+        "Зіньків", "Хмельницька обл., Зіньків с.,"
     )
     return cutted_address
 
@@ -75,20 +79,61 @@ def find_block_with_region(region):
     if yaml_config["geolocator"] == "GoogleV3":
         count = 0
         word = "область"
+        word_en = "oblast'"
         while True:
-            if word in region["address_components"][count]["long_name"]:
+            if (
+                word in region["address_components"][count]["long_name"]
+                or word_en in region["address_components"][count]["long_name"]
+            ):
                 print(region["address_components"][count]["long_name"])
-                is_region = region["address_components"][count]["long_name"].replace(
-                    "область", "обл"
+                is_region = (
+                    region["address_components"][count]["long_name"]
+                    .replace("область", "обл")
+                    .replace("oblast'", "обл")
                 )
                 break
             else:
                 count += 1
     if yaml_config["geolocator"] == "Nominatim":
-        print('you need to enter the Google Api key')
+        print("you need to enter the Google Api key")
         count = 0
         word = "область"
-        display_name = region['display_name'].split(',')
+        display_name = region["display_name"].split(",")
+        while True:
+            if word in display_name[count]:
+                is_region = display_name[count].replace("область", "обл")
+                break
+            else:
+                count += 1
+    return is_region
+
+
+def find_block_with_region_v2(region):
+    is_region = None
+    if yaml_config["geolocator"] == "GoogleV3":
+        count = 0
+        word = "область"
+        word_en = "oblast'"
+        while True:
+            if (
+                region["address_components"][count]["types"][0]
+                == "administrative_area_level_1"
+            ):
+                print(region["address_components"][count]["long_name"])
+                is_region = (
+                    region["address_components"][count]["long_name"]
+                    .replace(" область", "")
+                    .replace(" oblast'", "")
+                    + " обл"
+                )
+                break
+            else:
+                count += 1
+    if yaml_config["geolocator"] == "Nominatim":
+        print("you need to enter the Google Api key")
+        count = 0
+        word = "область"
+        display_name = region["display_name"].split(",")
         while True:
             if word in display_name[count]:
                 is_region = display_name[count].replace("область", "обл")
@@ -100,15 +145,18 @@ def find_block_with_region(region):
 
 def find_lat_long(address):
     location = None
-    cutted_address = (
-            "Україна "
-            + address.replace("Миколаїв", "Львівська обл. Миколаїв")
-            .replace("Підгородне", "Тернопільська обл. Підгородне с.,")
-            .replace("Острів", "Тернопільська обл., Острів с.,")
-            .replace("Зіньків", "Хмельницька обл., Зіньків с.,")
-            .replace("Заводське", "Тернопільська обл., Заводське с.,")
-            .replace("Монастирське", "Тернопільська обл., м.Монастирська")
-            .replace("Журавне", "Львівська обл. смт.Журавно")
+    cutted_address = "Україна " + address.replace(
+        "Миколаїв", "Львівська обл. Миколаїв"
+    ).replace("Підгородне", "Тернопільська обл. Підгородне с.,").replace(
+        "Острів", "Тернопільська обл., Острів с.,"
+    ).replace(
+        "Зіньків", "Хмельницька обл., Зіньків с.,"
+    ).replace(
+        "Заводське", "Тернопільська обл., Заводське с.,"
+    ).replace(
+        "Монастирське", "Тернопільська обл., м.Монастирська"
+    ).replace(
+        "Журавне", "Львівська обл. смт.Журавно"
     )
     while location == None:
         try:
@@ -117,7 +165,7 @@ def find_lat_long(address):
             location = geolocator.geocode(result, language="uk")
             # print(" ".join(result))
 
-            mixed_address = find_block_with_region(location.raw)
+            mixed_address = find_block_with_region_v2(location.raw)
             # mixed_address = location.raw["address_components"][2]["long_name"].replace(
             #     "область", "обл"
             # )
@@ -130,12 +178,13 @@ def find_lat_long(address):
 
 
 def get_grdobg_data():
-    select_grdobj = '''SELECT g.ID, g.ADDRESS 
-                        FROM GRDOBJ g  '''
+    select_grdobj = """SELECT g.ID, g.ADDRESS 
+                        FROM GRDOBJ g  """
     return select_grdobj
 
+
 def get_objects_data():
-    select_objects_data =  """SELECT 
+    select_objects_data = """SELECT 
                                     o2.ID, 
                                     o2.DESCRIPTION 
                                 FROM
@@ -147,40 +196,39 @@ def get_objects_data():
     return select_objects_data
 
 
-
 def partial_replacement(data):
     decoded_text = (
         data[1]
-            .decode("cp1251")
-            .replace("вул ", "вул.")
-            .replace("вул,", "вул.")
-            .replace("вул. ", "вул.")
-            .replace("вул, ", "вул.")
-            .replace(",1", ", 1")
-            .replace(",2", ", 2")
-            .replace(",3", ", 3")
-            .replace(",4", ", 4")
-            .replace(",5", ", 5")
-            .replace(",6", ", 6")
-            .replace(",7", ", 7")
-            .replace(",8", ", 8")
-            .replace(",9", ", 9")
-            .replace("м.Старокостянтинів ", "м.Старокостянтинів, ")
-            .replace("м.Тернопіль ", "м.Тернопіль, ")
-            .replace("м.Ужгород ", "м.Ужгород, ")
-            .replace("с.Сокільники ", "с.Сокільники, ")
-            .replace(",вул", ", вул")
-            .replace(",пл", ", пл")
-            .replace(",пр-т", ", пр-т")
-            .replace(".вул", ", вул")
-            .replace(".пл", ", пл")
-            .replace(".пр-т", ", пр-т")
-            .replace("вул ", ", вул.")
-            .replace("пл ", ", пл.")
-            .replace("пр-т ", "пр-т.")
-            .replace("..", ".")
-            .replace(",,", ",")
-            .replace("  ", " ")
+        .decode("cp1251")
+        .replace("вул ", "вул.")
+        .replace("вул,", "вул.")
+        .replace("вул. ", "вул.")
+        .replace("вул, ", "вул.")
+        .replace(",1", ", 1")
+        .replace(",2", ", 2")
+        .replace(",3", ", 3")
+        .replace(",4", ", 4")
+        .replace(",5", ", 5")
+        .replace(",6", ", 6")
+        .replace(",7", ", 7")
+        .replace(",8", ", 8")
+        .replace(",9", ", 9")
+        .replace("м.Старокостянтинів ", "м.Старокостянтинів, ")
+        .replace("м.Тернопіль ", "м.Тернопіль, ")
+        .replace("м.Ужгород ", "м.Ужгород, ")
+        .replace("с.Сокільники ", "с.Сокільники, ")
+        .replace(",вул", ", вул")
+        .replace(",пл", ", пл")
+        .replace(",пр-т", ", пр-т")
+        .replace(".вул", ", вул")
+        .replace(".пл", ", пл")
+        .replace(".пр-т", ", пр-т")
+        .replace("вул ", ", вул.")
+        .replace("пл ", ", пл.")
+        .replace("пр-т ", "пр-т.")
+        .replace("..", ".")
+        .replace(",,", ",")
+        .replace("  ", " ")
     )
     return decoded_text
 
@@ -188,14 +236,13 @@ def partial_replacement(data):
 # noinspection PyStringFormat
 def update_sql(database, text, id):
     update = ""
-    if database == 'OBJECTS':
+    if database == "OBJECTS":
         update = "update OBJECTS set DESCRIPTION=? WHERE ID=?;  "
         cur.execute(update, (text, id))
 
-    if database == 'GRDOBJ':
+    if database == "GRDOBJ":
         update = "update GRDOBJ set ADDRESS=? WHERE ID=?; "
         cur.execute(update, (text, id))
-
 
 
 def update_address(sql_result, database):
@@ -215,8 +262,10 @@ def update_address(sql_result, database):
                     replace_street = splited_address[0] + " вул., " + splited_address[1]
                     add_city = replace_street.split(".", 1)
                     encoded_text = (
-                            add_city[0].replace("вул", "Львів м., ") + add_city[1]
-                    ).encode("cp1251")
+                        (add_city[0].replace("вул", "Львів м., ") + add_city[1])
+                        .replace("  ", " ")
+                        .encode("cp1251")
+                    )
                     update_sql(database, encoded_text, data[0])
 
                 if decoded_text[0:3] == "пл.":
@@ -224,17 +273,23 @@ def update_address(sql_result, database):
                     replace_street = splited_address[0] + " пл., " + splited_address[1]
                     add_city = replace_street.split(".", 1)
                     encoded_text = (
-                            add_city[0].replace("пл", "Львів м., ") + add_city[1]
-                    ).encode("cp1251")
+                        (add_city[0].replace("пл", "Львів м., ") + add_city[1])
+                        .replace("  ", " ")
+                        .encode("cp1251")
+                    )
                     update_sql(database, encoded_text, data[0])
 
                 if decoded_text[0:5] == "пр-т.":
                     splited_address = decoded_text.split(",", 1)
-                    replace_street = splited_address[0] + " пр-т., " + splited_address[1]
+                    replace_street = (
+                        splited_address[0] + " пр-т., " + splited_address[1]
+                    )
                     add_city = replace_street.split(".", 1)
                     encoded_text = (
-                            add_city[0].replace("пр-т", "Львів м., ") + add_city[1]
-                    ).encode("cp1251")
+                        (add_city[0].replace("пр-т", "Львів м., ") + add_city[1])
+                        .replace("  ", " ")
+                        .encode("cp1251")
+                    )
                     update_sql(database, encoded_text, data[0])
 
                 if decoded_text[0:2] == "м.":
@@ -244,7 +299,9 @@ def update_address(sql_result, database):
                     # if replace_city in is_mykolaiv:
                     #     replace_city = 'Львівська обл., ' + replace_city
                     if replace_city not in main_city_list():
-                        region = find_lat_long(splited_address[0] + ' ' + splited_address[1])
+                        region = find_lat_long(
+                            splited_address[0] + " " + splited_address[1]
+                        )
                         region_and_city = region + "., " + replace_city + " м., "
 
                     elif replace_city in main_city_list():
@@ -263,8 +320,10 @@ def update_address(sql_result, database):
                         add_street = replace_street + " пр-т., "
 
                     encoded_text = (
-                            region_and_city + add_street + splited_address[2]
-                    ).encode("cp1251")
+                        (region_and_city + add_street + splited_address[2])
+                        .replace("  ", " ")
+                        .encode("cp1251")
+                    )
                     update_sql(database, encoded_text, data[0])
 
                 if decoded_text[0:2] == "с.":
@@ -281,7 +340,9 @@ def update_address(sql_result, database):
                     replace_city = splited_address[0].replace("с.", "")
 
                     if replace_city not in main_city_list():
-                        region = find_lat_long(splited_address[0] + ' ' + splited_address[1])
+                        region = find_lat_long(
+                            splited_address[0] + " " + splited_address[1]
+                        )
                         region_and_city = region + "., " + replace_city + " с., "
 
                     elif replace_city in main_city_list():
@@ -302,8 +363,10 @@ def update_address(sql_result, database):
                     logger.info(region_and_city + add_street + splited_address[2])
 
                     encoded_text = (
-                            region_and_city + add_street + splited_address[2]
-                    ).encode("cp1251")
+                        (region_and_city + add_street + splited_address[2])
+                        .replace("  ", " ")
+                        .encode("cp1251")
+                    )
                     update_sql(database, encoded_text, data[0])
 
                 if decoded_text[0:4] == "смт.":
@@ -320,7 +383,9 @@ def update_address(sql_result, database):
                     replace_city = splited_address[0].replace("смт.", "")
 
                     if replace_city not in main_city_list():
-                        region = find_lat_long(splited_address[0] + ' ' + splited_address[1])
+                        region = find_lat_long(
+                            splited_address[0] + " " + splited_address[1]
+                        )
                         region_and_city = region + "., " + replace_city + " смт., "
 
                     elif replace_city in main_city_list():
@@ -340,13 +405,13 @@ def update_address(sql_result, database):
 
                     logger.info(region_and_city + add_street + splited_address[2])
 
-                    encoded_text = (region_and_city + add_street + splited_address[2]).encode(
-                        "cp1251"
+                    encoded_text = (
+                        (region_and_city + add_street + splited_address[2])
+                        .replace("  ", " ")
+                        .encode("cp1251")
                     )
 
                     update_sql(database, encoded_text, data[0])
-
-
 
         except NameError as err:
             logger.debug(err)
@@ -366,43 +431,37 @@ def update_address(sql_result, database):
             logger.debug(data)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     with logger.catch():
         try:
             con = fdb.connect(
-                dsn=yaml_config['database_location'],
+                dsn=yaml_config["database_location"],
                 user="SYSDBA",
                 password="idonotcare",
                 # necessary for all dialect 1 databases
                 charset="WIN1251",  # specify a character set for the connection
             )
         except fdb.fbcore.DataError as err:
-            logger.debug("can't connect to database " + yaml_config['database_location'])
+            logger.debug(
+                "can't connect to database " + yaml_config["database_location"]
+            )
             logger.debug(err)
 
         except:
-            logger.debug("can't connect to database " + yaml_config['database_location'])
-
-
+            logger.debug(
+                "can't connect to database " + yaml_config["database_location"]
+            )
 
         cur = con.cursor()
         select = get_grdobg_data()
         cur.execute(select)
         sql_result = cur.fetchall()
-        table = 'GRDOBJ'
+        table = "GRDOBJ"
         update_address(sql_result, table)
         select = get_objects_data()
         cur.execute(select)
         sql_result = cur.fetchall()
-        table = 'OBJECTS'
+        table = "OBJECTS"
         update_address(sql_result, table)
         con.commit()
         cur.close()
-
-
-
-
-
-
-
