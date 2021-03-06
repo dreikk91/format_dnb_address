@@ -3,11 +3,21 @@ import yaml
 from geopy.geocoders import GoogleV3, Nominatim
 from loguru import logger
 
+# logger.add(
+#     "format_address.log",
+#     format="{time} {level} {message}",
+#     level="INFO",
+#     rotation="1 days",
+# )
+
 logger.add(
-    "format_address.log",
-    format="{time} {level} {message}",
-    level="INFO",
-    rotation="1 days",
+    sink="format_address.log",
+    enqueue=True,
+    rotation="4 weeks",
+    retention="4 months",
+    encoding="utf-8",
+    backtrace=True,
+    diagnose=True,
 )
 
 try:
@@ -111,13 +121,13 @@ def find_lat_long(address):
             # mixed_address = location.raw["address_components"][2]["long_name"].replace(
             #     "область", "обл"
             # )
-
+            return mixed_address
         except IndexError as err:
             logger.debug("Handling run-time error:", err)
             break
         except:
             logger.debug("Handling run-time error:")
-        return mixed_address
+
 
 def get_grdobg_data():
     select_grdobj = '''SELECT g.ID, g.ADDRESS 
@@ -126,14 +136,14 @@ def get_grdobg_data():
 
 def get_objects_data():
     select_objects_data =  """SELECT 
-                    o2.ID, 
-                    o2.DESCRIPTION 
-                FROM
-                    OBJECTS o2
-                WHERE
-                    o2.CLASS_NAME = 'PPK_DNB128'
-                    OR o2.CLASS_NAME = 'PPK_VBD4'
-                    OR o2.CLASS_NAME = 'PPK_VBD6'"""
+                                    o2.ID, 
+                                    o2.DESCRIPTION 
+                                FROM
+                                    OBJECTS o2
+                                WHERE
+                                    o2.CLASS_NAME = 'PPK_DNB128'
+                                    OR o2.CLASS_NAME = 'PPK_VBD4'
+                                    OR o2.CLASS_NAME = 'PPK_VBD6'"""
     return select_objects_data
 
 
@@ -358,36 +368,37 @@ def update_address(sql_result, database):
 
 
 if __name__ == '__main__':
-    try:
-        con = fdb.connect(
-            dsn=yaml_config['database_location'],
-            user="SYSDBA",
-            password="idonotcare",
-            # necessary for all dialect 1 databases
-            charset="WIN1251",  # specify a character set for the connection
-        )
-    except fdb.fbcore.DataError as err:
-        logger.debug("can't connect to database " + yaml_config['database_location'])
-        logger.debug(err)
+    with logger.catch():
+        try:
+            con = fdb.connect(
+                dsn=yaml_config['database_location'],
+                user="SYSDBA",
+                password="idonotcare",
+                # necessary for all dialect 1 databases
+                charset="WIN1251",  # specify a character set for the connection
+            )
+        except fdb.fbcore.DataError as err:
+            logger.debug("can't connect to database " + yaml_config['database_location'])
+            logger.debug(err)
 
-    except:
-        logger.debug("can't connect to database " + yaml_config['database_location'])
+        except:
+            logger.debug("can't connect to database " + yaml_config['database_location'])
 
 
 
-    cur = con.cursor()
-    select = get_grdobg_data()
-    cur.execute(select)
-    sql_result = cur.fetchall()
-    table = 'GRDOBJ'
-    update_address(sql_result, table)
-    select = get_objects_data()
-    cur.execute(select)
-    sql_result = cur.fetchall()
-    table = 'OBJECTS'
-    update_address(sql_result, table)
-    con.commit()
-    cur.close()
+        cur = con.cursor()
+        select = get_grdobg_data()
+        cur.execute(select)
+        sql_result = cur.fetchall()
+        table = 'GRDOBJ'
+        update_address(sql_result, table)
+        select = get_objects_data()
+        cur.execute(select)
+        sql_result = cur.fetchall()
+        table = 'OBJECTS'
+        update_address(sql_result, table)
+        con.commit()
+        cur.close()
 
 
 
