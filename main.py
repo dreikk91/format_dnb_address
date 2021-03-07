@@ -1,14 +1,8 @@
 import fdb
 import yaml
 from geopy.geocoders import GoogleV3, Nominatim
+from geopy.adapters import AioHTTPAdapter
 from loguru import logger
-
-# logger.add(
-#     "format_address.log",
-#     format="{time} {level} {message}",
-#     level="INFO",
-#     rotation="1 days",
-# )
 
 logger.add(
     sink="format_address.log",
@@ -74,46 +68,10 @@ def add_and_replace_data_for_geocoding(address):
     return cutted_address
 
 
-def find_block_with_region(region):
-    is_region = None
-    if yaml_config["geolocator"] == "GoogleV3":
-        count = 0
-        word = "область"
-        word_en = "oblast'"
-        while True:
-            if (
-                word in region["address_components"][count]["long_name"]
-                or word_en in region["address_components"][count]["long_name"]
-            ):
-                print(region["address_components"][count]["long_name"])
-                is_region = (
-                    region["address_components"][count]["long_name"]
-                    .replace("область", "обл")
-                    .replace("oblast'", "обл")
-                )
-                break
-            else:
-                count += 1
-    if yaml_config["geolocator"] == "Nominatim":
-        print("you need to enter the Google Api key")
-        count = 0
-        word = "область"
-        display_name = region["display_name"].split(",")
-        while True:
-            if word in display_name[count]:
-                is_region = display_name[count].replace("область", "обл")
-                break
-            else:
-                count += 1
-    return is_region
-
-
 def find_block_with_region_v2(region):
     is_region = None
     if yaml_config["geolocator"] == "GoogleV3":
         count = 0
-        word = "область"
-        word_en = "oblast'"
         while True:
             if (
                 region["address_components"][count]["types"][0]
@@ -160,21 +118,12 @@ def find_lat_long(address):
     )
     while location == None:
         try:
-            # del cutted_address[-1]
-            result = cutted_address
-            location = geolocator.geocode(result, language="uk")
-            # print(" ".join(result))
-
+            location = geolocator.geocode(cutted_address, language="uk")
             mixed_address = find_block_with_region_v2(location.raw)
-            # mixed_address = location.raw["address_components"][2]["long_name"].replace(
-            #     "область", "обл"
-            # )
             return mixed_address
         except IndexError as err:
             logger.debug("Handling run-time error:", err)
             break
-        except:
-            logger.debug("Handling run-time error:")
 
 
 def get_grdobg_data():
@@ -245,6 +194,92 @@ def update_sql(database, text, id):
         cur.execute(update, (text, id))
 
 
+def if_street(decoded_text):
+    splited_address = decoded_text.split(",", 1)
+    replace_street = splited_address[0] + " вул., " + splited_address[1]
+    add_city = replace_street.split(".", 1)
+
+    return add_city
+
+
+def if_square(decoded_text):
+    splited_address = decoded_text.split(",", 1)
+    replace_street = splited_address[0] + " пл., " + splited_address[1]
+    add_city = replace_street.split(".", 1)
+
+    return add_city
+
+
+def if_avenue(decoded_text):
+    splited_address = decoded_text.split(",", 1)
+    replace_street = splited_address[0] + " пр-т., " + splited_address[1]
+    add_city = replace_street.split(".", 1)
+
+    return add_city
+
+
+def if_city(decoded_text):
+    region_and_city = None
+    splited_address = decoded_text.split(", ", 2)
+    replace_city = splited_address[0].replace("м.", "")
+    if replace_city not in main_city_list():
+        region = find_lat_long(splited_address[0] + " " + splited_address[1])
+        region_and_city = region + "., " + replace_city + " м., "
+
+    elif replace_city in main_city_list():
+        region_and_city = replace_city + " м., "
+    return region_and_city
+
+
+def if_street_after_city(splited_address):
+    replace_street = splited_address[1].replace("вул.", "")
+    add_street = replace_street + " вул., "
+    return add_street
+
+
+def if_square_afrer_city(splited_address) -> object:
+    replace_street = splited_address[1].replace("пл.", "")
+    add_street = replace_street + " пл., "
+    return add_street
+
+
+def if_avenue_after_city(splited_address):
+    replace_street = splited_address[1].replace("пр-т.", "")
+    add_street = replace_street + " пр-т., "
+    return add_street
+
+def if_village(decoded_text):
+    region_and_city = None
+    splited_address = decoded_text.split(", ", 2)
+    replace_city = splited_address[0].replace("с.", "")
+
+    if replace_city not in main_city_list():
+        region = find_lat_long(
+            splited_address[0] + " " + splited_address[1]
+        )
+        region_and_city = region + "., " + replace_city + " с., "
+
+    elif replace_city in main_city_list():
+        region_and_city = replace_city + " с., "
+
+    return region_and_city
+
+def if_smt(decoded_text):
+    region_and_city = None
+    splited_address = decoded_text.split(", ", 2)
+    replace_city = splited_address[0].replace("смт.", "")
+
+    if replace_city not in main_city_list():
+        region = find_lat_long(
+            splited_address[0] + " " + splited_address[1]
+        )
+        region_and_city = region + "., " + replace_city + " смт., "
+
+    elif replace_city in main_city_list():
+        region_and_city = replace_city + " смт., "
+
+    return region_and_city
+
 def update_address(sql_result, database):
     for data in sql_result:
         splited_address = None
@@ -254,13 +289,13 @@ def update_address(sql_result, database):
         region_and_city = None
         decoded_text = None
         region = None
+        encoded_text = None
         try:
             if data[1] is not None:
                 decoded_text = partial_replacement(data)
                 if decoded_text[0:4] == "вул.":
-                    splited_address = decoded_text.split(",", 1)
-                    replace_street = splited_address[0] + " вул., " + splited_address[1]
-                    add_city = replace_street.split(".", 1)
+                    add_city = if_street(decoded_text)
+                    print(add_city[0].replace("вул", "Львів м., ") + add_city[1])
                     encoded_text = (
                         (add_city[0].replace("вул", "Львів м., ") + add_city[1])
                         .replace("  ", " ")
@@ -269,9 +304,7 @@ def update_address(sql_result, database):
                     update_sql(database, encoded_text, data[0])
 
                 if decoded_text[0:3] == "пл.":
-                    splited_address = decoded_text.split(",", 1)
-                    replace_street = splited_address[0] + " пл., " + splited_address[1]
-                    add_city = replace_street.split(".", 1)
+                    add_city = if_square(decoded_text)
                     encoded_text = (
                         (add_city[0].replace("пл", "Львів м., ") + add_city[1])
                         .replace("  ", " ")
@@ -280,11 +313,7 @@ def update_address(sql_result, database):
                     update_sql(database, encoded_text, data[0])
 
                 if decoded_text[0:5] == "пр-т.":
-                    splited_address = decoded_text.split(",", 1)
-                    replace_street = (
-                        splited_address[0] + " пр-т., " + splited_address[1]
-                    )
-                    add_city = replace_street.split(".", 1)
+                    add_city = if_avenue(decoded_text)
                     encoded_text = (
                         (add_city[0].replace("пр-т", "Львів м., ") + add_city[1])
                         .replace("  ", " ")
@@ -293,31 +322,17 @@ def update_address(sql_result, database):
                     update_sql(database, encoded_text, data[0])
 
                 if decoded_text[0:2] == "м.":
-
                     splited_address = decoded_text.split(", ", 2)
-                    replace_city = splited_address[0].replace("м.", "")
-                    # if replace_city in is_mykolaiv:
-                    #     replace_city = 'Львівська обл., ' + replace_city
-                    if replace_city not in main_city_list():
-                        region = find_lat_long(
-                            splited_address[0] + " " + splited_address[1]
-                        )
-                        region_and_city = region + "., " + replace_city + " м., "
-
-                    elif replace_city in main_city_list():
-                        region_and_city = replace_city + " м., "
+                    region_and_city = if_city(decoded_text)
 
                     if splited_address[1][0:4] == "вул.":
-                        replace_street = splited_address[1].replace("вул.", "")
-                        add_street = replace_street + " вул., "
+                        add_street = if_street_after_city(splited_address)
 
                     if splited_address[1][0:3] == "пл.":
-                        replace_street = splited_address[1].replace("пл.", "")
-                        add_street = replace_street + " пл., "
+                        add_street = if_square_afrer_city(splited_address)
 
                     elif splited_address[1][0:5] == "пр-т.":
-                        replace_street = splited_address[1].replace("пр-т.", "")
-                        add_street = replace_street + " пр-т., "
+                        add_street = if_avenue_after_city(splited_address)
 
                     encoded_text = (
                         (region_and_city + add_street + splited_address[2])
@@ -335,30 +350,18 @@ def update_address(sql_result, database):
                     region_and_city = None
                     region = None
                     logger.info(decoded_text)
-
                     splited_address = decoded_text.split(", ", 2)
-                    replace_city = splited_address[0].replace("с.", "")
 
-                    if replace_city not in main_city_list():
-                        region = find_lat_long(
-                            splited_address[0] + " " + splited_address[1]
-                        )
-                        region_and_city = region + "., " + replace_city + " с., "
-
-                    elif replace_city in main_city_list():
-                        region_and_city = replace_city + " с., "
+                    region_and_city = if_village(decoded_text)
 
                     if splited_address[1][0:4] == "вул.":
-                        replace_street = splited_address[1].replace("вул.", "")
-                        add_street = replace_street + " вул., "
+                        add_street = if_street_after_city(splited_address)
 
                     if splited_address[1][0:3] == "пл.":
-                        replace_street = splited_address[1].replace("пл.", "")
-                        add_street = replace_street + " пл., "
+                        add_street = if_square_afrer_city(splited_address)
 
                     elif splited_address[1][0:5] == "пр-т.":
-                        replace_street = splited_address[1].replace("пр-т.", "")
-                        add_street = replace_street + " пр-т., "
+                        add_street = if_avenue_after_city(splited_address)
 
                     logger.info(region_and_city + add_street + splited_address[2])
 
@@ -380,28 +383,25 @@ def update_address(sql_result, database):
                     logger.info(decoded_text)
 
                     splited_address = decoded_text.split(", ", 2)
-                    replace_city = splited_address[0].replace("смт.", "")
 
-                    if replace_city not in main_city_list():
-                        region = find_lat_long(
-                            splited_address[0] + " " + splited_address[1]
-                        )
-                        region_and_city = region + "., " + replace_city + " смт., "
-
-                    elif replace_city in main_city_list():
-                        region_and_city = replace_city + " смт., "
+                    region_and_city = if_smt(decoded_text)
 
                     if splited_address[1][0:4] == "вул.":
-                        replace_street = splited_address[1].replace("вул.", "")
-                        add_street = replace_street + " вул., "
+                        add_street = if_street_after_city(splited_address)
 
                     if splited_address[1][0:3] == "пл.":
-                        replace_street = splited_address[1].replace("пл.", "")
-                        add_street = replace_street + " пл., "
+                        add_street = if_square_afrer_city(splited_address)
 
-                    if splited_address[1][0:5] == "пр-т.":
-                        replace_street = splited_address[1].replace("пр-т.", "")
-                        add_street = replace_street + " пр-т., "
+                    elif splited_address[1][0:5] == "пр-т.":
+                        add_street = if_avenue_after_city(splited_address)
+
+                    logger.info(region_and_city + add_street + splited_address[2])
+
+                    encoded_text = (
+                        (region_and_city + add_street + splited_address[2])
+                            .replace("  ", " ")
+                            .encode("cp1251")
+                    )
 
                     logger.info(region_and_city + add_street + splited_address[2])
 
